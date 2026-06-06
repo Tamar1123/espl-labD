@@ -112,3 +112,79 @@ add_multi:
     mov esp, ebp
     pop ebp
     ret
+
+
+;part 3 - pseudo-random number generator
+
+rand_num:
+    push ebp
+    mov ebp, esp
+    push ebx
+
+    mov ax, [lfsr_state]
+    mov bx, [lfsr_mask]
+
+    and bx, ax
+    
+    ;xor top byte with bottom byte to find bit parity
+    mov cx, bx
+    shr cx, 8
+    xor cl, bl
+    jp .parity_even
+    mov cx, 1           ; odd parity - feedback bit is 1
+    jmp .shift
+.parity_even:
+    mov cx, 0          ; even parity - feedback bit is 0
+
+.shift:
+    shl cx, 15            ;move the feedback bit to MSB position
+    shr ax, 1                ;shift running state right by 1
+    or ax, cx
+    mov [lfsr_state], ax     ;save new LFSR state
+    
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
+PRmulti:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+
+.get_valid_len:
+    call rand_num
+    and al, 0xFF             ;keep lower 8 bits for size length
+    cmp al, 0
+    je .get_valid_len        ;if length is 0, fetch a new random byte instead
+    
+    movzx esi, al            ;esi = length 'n' in bytes
+
+    lea eax, [esi + 1]
+    push eax
+    call malloc
+    add esp, 4
+    mov ebx, eax            ;ebx = allocated random struct
+    mov [ebx], sil
+
+    xor ecx, ecx             ;byte tracker index = 0
+.fill_random_loop:
+    cmp ecx, esi
+    jge .fill_done
+
+    push ecx 
+    call rand_num
+    pop ecx
+
+    mov [ebx + 1 + ecx], al  ;store random byte into data payload
+    inc ecx
+    jmp .fill_random_loop
+
+.fill_done:
+    mov eax, ebx             ;return completed random struct pointer
+    pop esi
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
