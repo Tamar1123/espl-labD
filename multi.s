@@ -4,13 +4,176 @@ section .data
     lfsr_state: dw 0xACE1  
     lfsr_mask:  dw 0xB400
 
+    byte_fmt: db "%02hhx", 0
+    nl_fmt: db 10, 0
+
+section .bss
+    inbuf: resb 502
+
 section .text
     global get_max_min
     global add_multi
+    global getmulti
+    global print_multi
     global rand_num
     global PRmulti
     
     extern malloc
+    extern fgets
+    extern stdin
+    extern printf
+
+
+;part 1a - print struct multi in hexadecimal
+
+PRmulti:
+print_multi:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+
+    mov esi, [ebp + 8]
+    movzx ebx, byte [esi]
+    dec ebx
+
+.print_loop:
+    cmp ebx, -1
+    je .print_nl
+
+    movzx eax, byte [esi + 1 + ebx]
+    push eax
+    push dword byte_fmt
+    call printf
+    add esp, 8
+
+    dec ebx
+    jmp .print_loop
+
+.print_nl:
+    push dword nl_fmt
+    call printf
+    add esp, 4
+
+    pop esi
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
+
+;part 1b - read hex string from stdin and store as struct multi
+
+getmulti:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push esi
+    push edi
+
+    push dword [stdin]
+    push dword 502
+    push dword inbuf
+    call fgets
+    add esp, 12
+    test eax, eax
+    jz .fail
+
+    ; count hex digits until '\n' or '\0'
+    xor ecx, ecx
+.len_loop:
+    mov al, [inbuf + ecx]
+    cmp al, 0
+    je .len_done
+    cmp al, 10
+    je .len_done
+    inc ecx
+    jmp .len_loop
+
+.len_done:
+    ; if odd number of digits, prepend one '0' to make it even
+    test ecx, 1
+    jz .have_even
+
+    mov edx, ecx
+.shift_right:
+    cmp edx, 0
+    je .insert_zero
+    mov al, [inbuf + edx - 1]
+    mov [inbuf + edx], al
+    dec edx
+    jmp .shift_right
+
+.insert_zero:
+    mov byte [inbuf], '0'
+    inc ecx
+
+.have_even:
+    mov edi, ecx
+    mov eax, ecx
+    shr eax, 1
+    mov esi, eax                 ; size in bytes
+
+    inc eax                      ; +1 for struct size field
+    push eax
+    call malloc
+    add esp, 4
+    test eax, eax
+    jz .fail
+
+    mov ebx, eax                 ; result pointer
+    mov edx, esi
+    mov [ebx], dl
+
+    xor ecx, ecx                 ; byte index
+    lea edx, [inbuf + edi - 1]   ; points at last hex digit
+
+.pair_loop:
+    cmp ecx, esi
+    jge .ok
+
+    mov al, [edx - 1]            ; high nibble char
+    call .hex_to_nibble
+    shl al, 4
+    mov ah, al
+
+    mov al, [edx]                ; low nibble char
+    call .hex_to_nibble
+    or al, ah
+
+    mov [ebx + 1 + ecx], al
+    inc ecx
+    sub edx, 2
+    jmp .pair_loop
+
+.ok:
+    mov eax, ebx
+    pop edi
+    pop esi
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
+.fail:
+    xor eax, eax
+    pop edi
+    pop esi
+    pop ebx
+    mov esp, ebp
+    pop ebp
+    ret
+
+.hex_to_nibble:
+    cmp al, '9'
+    jbe .digit
+    and al, 0xDF
+    sub al, 'A'
+    add al, 10
+    ret
+.digit:
+    sub al, '0'
+    ret
 
 
 ;part 2a - sorting by struct size

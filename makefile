@@ -1,13 +1,13 @@
-all: multi task0
+all: multi
 
 multi: multi.o
 	gcc -m32 multi.o -o multi
 
-multi.o: multi.c
+multi.o: multi.s
 	nasm -f elf32 multi.s -o multi.o
 
-task0: task0.o
-	gcc -m32 -no-pie task0.o -o task0
+task0: task0.o multi.o
+	gcc -m32 -no-pie task0.o multi.o -o task0
 
 task0.o: task0.s
 	nasm -f elf32 task0.s -o task0.o
