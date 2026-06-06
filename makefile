@@ -1,7 +1,7 @@
 all: multi task0
 
 multi: multi.o
-	gcc -m32 multi.o -o multi
+	gcc -m32 -no-pie multi.o -o multi
 
 multi.o: multi.s
 	nasm -f elf32 multi.s -o multi.o

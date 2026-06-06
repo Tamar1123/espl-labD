@@ -17,6 +17,7 @@ section .bss
     inbuf: resb 502
 
 section .text
+    global main
     global get_max_min
     global add_multi
     global getmulti
@@ -79,9 +80,11 @@ main:
     add     esp, 8
     
     ;print calculation result
+    mov     ebx, eax
     push    eax
     call    print_multi
-    call    free          
+    push    ebx
+    call    free
     add     esp, 4
     jmp     .exit
 
@@ -117,11 +120,15 @@ main:
 
     push    esi
     call    free
+    add     esp, 4
+
     push    edi
     call    free
+    add     esp, 4
+
     push    ebx
     call    free
-    add     esp, 12
+    add     esp, 4
     jmp     .exit
 
 .run_random:
@@ -155,14 +162,17 @@ main:
     call    print_multi
     add     esp, 4
 
-
     push    esi
     call    free
+    add     esp, 4
+
     push    edi
     call    free
+    add     esp, 4
+
     push    ebx
     call    free
-    add     esp, 12
+    add     esp, 4
 
 .exit:
     mov     eax, 0
@@ -346,6 +356,7 @@ add_multi:
     push ebx
     push esi
     push edi
+    sub esp, 12
 
     mov eax, [ebp + 8]     ;eax = pointer to struct p
     mov ebx, [ebp + 12]    ;ebx = pointer to struct q
@@ -357,67 +368,69 @@ add_multi:
 
     movzx ecx, byte [esi]    ; ecx = max_len
     movzx edx, byte [edi]    ; edx = min_len
-
-    ;size to allocate = max_len + 1
+    mov [ebp - 20], edx      ; save min_len
     mov eax, ecx
-    cmp eax, 255   ;255 = max_len limit
-    je .allocate
-    inc eax                
+    sub eax, edx
+    mov [ebp - 16], eax      ; remaining bytes from max after overlap
 
-.allocate:
-    mov edx, eax             
-    inc eax             ;+1 extra byte for the size field
-    push edx                 
-    push eax                 
-    call malloc              
+    ;size to allocate = max_len + 1, unless max_len is already 255
+    cmp ecx, 255
+    je .have_result_len
+    inc ecx
+
+.have_result_len:
+    mov [ebp - 24], ecx      ; save result array length (without struct header)
+    mov eax, ecx
+    inc eax                  ; +1 extra byte for the size field
+    push eax
+    call malloc
     add esp, 4
-    pop edx                  
     
     mov ebx, eax             ; ebx = pointer to newly allocated struct
-    mov [ebx], dl            ; result_struct->size = size of the internal number array
+    mov ecx, [ebp - 24]
+    mov [ebx], cl            ; result_struct->size = size of the internal number array
 
-    ;bounds for addition loops
-    movzx ecx, byte [esi]    ;max_len
-    movzx edx, byte [edi]    ;min_len
-    
     xor eax, eax      ;array index i = 0
     clc               ;clear carry flag
 
-.add_min_loop:
-    cmp eax, edx
-    je .add_max_loop         ;when done adding overlapping bytes, go to remaining bytes
+    mov ecx, [ebp - 20]      ; min_len loop counter
+    jecxz .setup_max_loop
 
-    mov cl, [esi + 1 + eax]  ;load byte from max_struct (offset 1 skips for 'size')
-    adc cl, [edi + 1 + eax]  ;add byte from min_struct + carry flag
-    mov [ebx + 1 + eax], cl  ;store in result_struct
+.add_min_loop:
+    mov dl, [esi + 1 + eax]  ;load byte from max_struct (offset 1 skips for 'size')
+    adc dl, [edi + 1 + eax]  ;add byte from min_struct + carry flag
+    mov [ebx + 1 + eax], dl  ;store in result_struct
 
     inc eax
-    jmp .add_min_loop
+    dec ecx
+    jnz .add_min_loop
+
+.setup_max_loop:
+    mov ecx, [ebp - 16]
+    jecxz .finalize_carry
 
 .add_max_loop:
-    movzx ecx, byte [esi]
-    cmp eax, ecx
-    je .finalize_carry       ;if we reached the end of max_len handle final overflow
-
-    mov cl, [esi + 1 + eax]
-    adc cl, 0 
-    mov [ebx + 1 + eax], cl
+    mov dl, [esi + 1 + eax]
+    adc dl, 0
+    mov [ebx + 1 + eax], dl
 
     inc eax
-    jmp .add_max_loop
+    dec ecx
+    jnz .add_max_loop
 
 .finalize_carry:
-    ;checking if we have room to store the final carry bit (if size < 255)
+    setc dl                  ;save carry before any flag-clobbering instruction
+
+    ;checking if we have room to store the final carry byte (size < 255 case)
     movzx ecx, byte [ebx]
     cmp eax, ecx
     jge .add_complete
 
-    mov cl, 0
-    adc cl, 0                ;capture final carry bit
-    mov [ebx + 1 + eax], cl
+    mov [ebx + 1 + eax], dl
 
 .add_complete:
     mov eax, ebx       ;return the pointer to the new allocated struct in eax
+    add esp, 12
     pop edi
     pop esi
     pop ebx
@@ -472,13 +485,16 @@ PRmulti:
     je .get_valid_len        ;if length is 0, fetch a new random byte instead
     
     movzx esi, al            ;esi = length 'n' in bytes
+    mov dl, al               ;save 8-bit length for header write
 
     lea eax, [esi + 1]
+    push edx
     push eax
     call malloc
     add esp, 4
+    pop edx
     mov ebx, eax            ;ebx = allocated random struct
-    mov [ebx], sil
+    mov [ebx], dl
 
     xor ecx, ecx             ;byte tracker index = 0
 .fill_random_loop:
