@@ -7,6 +7,12 @@ section .data
     byte_fmt: db "%02hhx", 0
     nl_fmt: db 10, 0
 
+    x_struct: db 5
+    x_num:    db 0xaa, 1, 2, 0x44, 0x4f
+    
+    y_struct: db 6
+    y_num:    db 0xaa, 1, 2, 3, 0x44, 0x4f
+
 section .bss
     inbuf: resb 502
 
@@ -22,11 +28,154 @@ section .text
     extern fgets
     extern stdin
     extern printf
+    extern free
+
+
+main:
+    push    ebp
+    mov     ebp, esp
+    push    ebx
+    push    esi
+    push    edi
+
+    mov     ecx, [ebp + 8]   ; ecx = argc
+    mov     edx, [ebp + 12]  ; edx = argv
+
+    ;check if there are no command line arguments
+    cmp     ecx, 1
+    je      .run_default
+
+    ;check if argv[1] exists and check the flag
+    mov     eax, [edx + 4]   ; eax = argv[1]
+    movzx   ebx, byte [eax]
+    cmp     bl, '-'          ;make sure it starts with a '-'
+    jne     .run_default
+    
+    movzx   ebx, byte [eax + 1]
+    cmp     bl, 'I'
+    je      .run_stdin
+    cmp      bl, 'i'
+    je       .run_stdin
+    cmp     bl, 'R'
+    je      .run_random
+    cmp     bl, 'r'
+    je      .run_random
+
+.run_default:
+    ;print x
+    push    x_struct
+    call    print_multi
+    add     esp, 4
+
+    ;print y
+    push    y_struct
+    call    print_multi
+    add     esp, 4
+
+    ;add x+y
+    push    y_struct
+    push    x_struct
+    call    add_multi
+    add     esp, 8
+    
+    ;print calculation result
+    push    eax
+    call    print_multi
+    call    free          
+    add     esp, 4
+    jmp     .exit
+
+.run_stdin:
+    ;read first multi-precision integer from stdin and save pointer
+    call    getmulti       
+    mov     esi, eax
+    
+    ;read second multi-precision integer from stdin and save pointer
+    call    getmulti       
+    mov     edi, eax
+
+    ;print both structs
+    push    esi
+    call    print_multi
+    add     esp, 4
+
+    push    edi
+    call    print_multi
+    add     esp, 4
+
+    ;add struct 1 + struct 2
+    push    edi
+    push    esi
+    call    add_multi
+    add     esp, 8
+    mov     ebx, eax         ;save the pointer to calculation result struct
+
+    ;print calculation result
+    push    ebx
+    call    print_multi
+    add     esp, 4
+
+    push    esi
+    call    free
+    push    edi
+    call    free
+    push    ebx
+    call    free
+    add     esp, 12
+    jmp     .exit
+
+.run_random:
+    ;generate random multi-precision struct 1
+    call    PRmulti
+    mov     esi, eax
+    
+    ;generate random multi-precision struct 2
+    call    PRmulti
+    mov     edi, eax
+
+    ;print random struct 1
+    push    esi
+    call    print_multi
+    add     esp, 4
+
+    ;print random struct 2
+    push    edi
+    call    print_multi
+    add     esp, 4
+
+    ;add them together
+    push    edi
+    push    esi
+    call    add_multi
+    add     esp, 8
+    mov     ebx, eax         ;save computation result address
+
+    ;print sum output
+    push    ebx
+    call    print_multi
+    add     esp, 4
+
+
+    push    esi
+    call    free
+    push    edi
+    call    free
+    push    ebx
+    call    free
+    add     esp, 12
+
+.exit:
+    mov     eax, 0
+    pop     edi
+    pop     esi
+    pop     ebx
+    mov     esp, ebp
+    pop     ebp
+    ret
 
 
 ;part 1a - print struct multi in hexadecimal
 
-PRmulti:
 print_multi:
     push ebp
     mov ebp, esp
