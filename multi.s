@@ -5,6 +5,7 @@ section .data
     lfsr_mask:  dw 0xB400
 
     byte_fmt: db "%02hhx", 0
+    byte_nopad_fmt: db "%x", 0
     nl_fmt: db 10, 0
 
     x_struct: db 5
@@ -191,21 +192,43 @@ print_multi:
     mov ebp, esp
     push ebx
     push esi
+    push edi
 
     mov esi, [ebp + 8]
-    movzx ebx, byte [esi]
+    movzx ebx, byte [esi]        ; total number of bytes
+    lea edi, [esi + ebx]         ; edi = pointer to MSB byte
+
+.trim_leading_zero_bytes:
+    cmp ebx, 1
+    jbe .print_first
+    cmp byte [edi], 0
+    jne .print_first
+    dec edi
     dec ebx
+    jmp .trim_leading_zero_bytes
+
+.print_first:
+    movzx eax, byte [edi]
+    push eax
+    push dword byte_nopad_fmt
+    call printf
+    add esp, 8
+
+    dec edi
+    dec ebx
+    jz .print_nl
 
 .print_loop:
-    cmp ebx, -1
+    cmp ebx, 0
     je .print_nl
 
-    movzx eax, byte [esi + 1 + ebx]
+    movzx eax, byte [edi]
     push eax
     push dword byte_fmt
     call printf
     add esp, 8
 
+    dec edi
     dec ebx
     jmp .print_loop
 
@@ -214,6 +237,7 @@ print_multi:
     call printf
     add esp, 4
 
+    pop edi
     pop esi
     pop ebx
     mov esp, ebp
